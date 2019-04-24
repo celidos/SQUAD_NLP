@@ -92,11 +92,13 @@ def get_train_args():
 
     add_common_args(parser)
     add_train_test_args(parser)
-
+   
+    
     parser.add_argument('--eval_steps',
                         type=int,
                         default=50000,
                         help='Number of steps between successive evaluations.')
+
     parser.add_argument('--lr',
                         type=float,
                         default=0.5,
