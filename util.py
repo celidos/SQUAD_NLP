@@ -85,6 +85,11 @@ class SQuAD(data.Dataset):
 
     def __len__(self):
         return len(self.valid_idxs)
+    
+    # !custom
+    def get_char_dict_size(self):
+        return len(set(self.context_char_idxs.numpy().ravel().tolist()).union( \
+            set(self.context_char_idxs.numpy().ravel().tolist())))
 
 
 def collate_fn(examples):

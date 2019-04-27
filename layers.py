@@ -39,6 +39,74 @@ class Embedding(nn.Module):
         return emb
 
 
+# custom
+class EmbeddingWithCharLevel(nn.Module):
+    """
+    
+    """
+    def __init__(self, word_vectors, hidden_size, drop_prob, \
+                 char_dict_size, char_emb_size, \
+                 conv_kernel_size, conv_depth1, \
+                 conv_output_hidden_size):
+        super(EmbeddingWithCharLevel, self).__init__()
+        self.drop_prob = drop_prob
+        self.conv_output_hidden_size = conv_output_hidden_size
+        
+        self.word_embed = nn.Embedding.from_pretrained(word_vectors)
+        self.char_embed = nn.Embedding(char_dict_size, char_emb_size, max_norm=1.0, norm_type=2.0).cuda()
+        
+        self.conv1 =  nn.Conv2d(in_channels = 1, 
+                                out_channels = conv_depth1, 
+                                kernel_size = (conv_kernel_size, char_emb_size),
+                                padding=[1, 0])
+        self.conv2 =  nn.Conv2d(in_channels = 1, 
+                                out_channels = conv_output_hidden_size, 
+                                kernel_size = (conv_kernel_size, conv_depth1),
+                                padding=[1, 0])
+        
+        self.wproj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
+        self.cproj = nn.Linear(conv_output_hidden_size, hidden_size, bias=False)
+        self.hwy = HighwayEncoder(2, 2*hidden_size) # *2
+
+    def forward(self, x_words, x_chars):
+        emb_words = self.word_embed(x_words)   # (batch_size, seq_len, word_embed_size)
+        
+#         print('x_char shape = ', x_chars.shape)
+        emb_char = self.char_embed(x_chars)    
+        
+#         print('emb_char shape = ', emb_char.shape)
+        
+        d1, d2, d3 = emb_char.shape[0], emb_char.shape[1], emb_char.shape[2]
+        
+        emb_char_reshaped = torch.reshape(emb_char, (d1 * d2, emb_char.shape[2], emb_char.shape[3]))
+        emb_char_reshaped = emb_char_reshaped.unsqueeze(1)  # (batch_size * seq_len, 1, max_word_len, char_emb_size)
+        
+#         print('emb_char_reshaped.shape = ', emb_char_reshaped.shape)
+        
+        cnv = self.conv1(emb_char_reshaped)
+        cnv = cnv.permute((0, 3, 2, 1))
+#         print('cnv shape = ', cnv.shape)
+        cnv = self.conv2(cnv)
+#         print('cnv shape = ', cnv.shape)
+        cemb = torch.reshape(cnv, (d1, d2, self.conv_output_hidden_size, d3))
+#         print('cnv shape = ', cemb.shape)
+        
+#         #max pool
+        cemb = cemb.max(dim=3)[0]
+        
+        wemb = F.dropout(emb_words, self.drop_prob, self.training)
+        
+        wemb = self.wproj(wemb)  # (batch_size, seq_len, hidden_size)
+#         print('cemb shape = ', cemb.shape)
+        cemb = self.cproj(cemb)  # (batch_size, seq_len, hidden_size)
+        
+        emb = torch.cat((wemb, cemb), 2)
+        
+        emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
+
+        return emb
+        
+    
 class HighwayEncoder(nn.Module):
     """Encode an input sequence using a highway network.
 
