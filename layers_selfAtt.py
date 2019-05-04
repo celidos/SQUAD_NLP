@@ -18,26 +18,6 @@ class SelfAttention(nn.Module):
             nn.init.xavier_uniform_(weight.weight)
 
     def forward(self, c, c_mask):
-        # batch_size, c_len, _ = c.size()
-        #
-        # c = F.dropout(c, self.drop_prob, self.training) # (bs, c_len, hid_size)
-        # h = torch.zeros_like(c)
-        # w_c = self.c_weight(c).unsqueeze(1) # (bs, 1, c_len, out_size)
-        #
-        # w_word = self.word_weight(c).unsqueeze(2)# (bs, c_len, 1, out_size)
-        # tanh = self.tanh(w_c + w_word)  # (bs, c_len, c_len, out_size)
-        #
-        # a = self.v_weight(tanh)  # (bs, c_len, c_len, 1)
-        #
-        # c_mask = c_mask.unsqueeze(2)  # BS x N x 1
-        # c_mask = c_mask * c_mask.permute([0, 2, 1])  # BS x N x N
-        #
-        # a = a.squeeze(3)   # (bs, c_len, c_len)
-        # a = masked_softmax(a, c_mask, dim=2)  # (bs, c_len, c_len)
-        #
-        # # (bs, c_len, c_len) x (bs, c_len, hid_size) => (bs, c_len, hid_size)
-        # h = torch.bmm(a, c)   # (bs, c_len, hid_size)
-
         batch_size, c_len, _ = c.size()
 
         c = F.dropout(c, self.drop_prob, self.training) # (bs, c_len, hid_size)
