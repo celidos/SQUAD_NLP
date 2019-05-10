@@ -23,7 +23,7 @@ class BiDAF_CBE(nn.Module):
                  char_dict_size, char_emb_size, \
                  conv_kernel_size, conv_depth1, \
                  conv_output_hidden_size
-        self.emb = layers.EmbeddingWithCharLevel(word_vectors=word_vectors,
+        self.emb = layers.EmbeddingWithCharLevel2(word_vectors=word_vectors,
                                                  hidden_size=hidden_size,
                                                  drop_prob=drop_prob,
                                                  char_dict_size=char_dict_size,
