@@ -64,27 +64,27 @@ class SelfAttention(nn.Module):
     def forward(self, c, c_mask):
         batch_size, c_len, hidden_size = c.size()
 
-        # g_tanh = (self.c_weight(c)).tanh()
-        # gt = self.v_weight.forward(g_tanh).squeeze(2)
+        g_tanh = (self.c_weight(c)).tanh()
+        gt = self.v_weight.forward(g_tanh).squeeze(2)
+
+        gt_prop = masked_softmax(gt, c_mask, dim = 1)
+        gt_prop = gt_prop.unsqueeze(2)
+        c_gt = c*gt_prop
+        return c_gt
+
+        # h = []
         #
-        # gt_prop = masked_softmax(gt, c_mask, dim = 1)
-        # gt_prop = gt_prop.unsqueeze(2)
-        # c_gt = c*gt_prop
-        # return c_gt
-
-        h = []
-
-        for i in range(c_len):
-            word = c[:, i, :]
-            w_c = self.c_weight(c)
-            w_word = self.word_weight(word).unsqueeze(1)
-            tanh = (w_c + w_word).tanh()
-            a = self.v_weight(tanh).squeeze(2)
-            a = masked_softmax(a, c_mask, dim=1).unsqueeze(1)
-            new_h = torch.bmm(a, c).squeeze(1)
-            h.append(new_h)
-
-        h = torch.stack(h, dim = 0)
+        # for i in range(c_len):
+        #     word = c[:, i, :]
+        #     w_c = self.c_weight(c)
+        #     w_word = self.word_weight(word).unsqueeze(1)
+        #     tanh = (w_c + w_word).tanh()
+        #     a = self.v_weight(tanh).squeeze(2)
+        #     a = masked_softmax(a, c_mask, dim=1).unsqueeze(1)
+        #     new_h = torch.bmm(a, c).squeeze(1)
+        #     h.append(new_h)
+        #
+        # h = torch.stack(h, dim = 0)
 
         # batch_size, c_len, _ = c.size()
         #
