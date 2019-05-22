@@ -11,6 +11,28 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from util import masked_softmax
 
+class Initialized_Conv1d(nn.Module):
+    def __init__(self, in_channels, out_channels,
+                 kernel_size=1, stride=1, padding=0, groups=1,
+                 relu=False, bias=False):
+        super().__init__()
+        self.out = nn.Conv1d(
+            in_channels, out_channels,
+            kernel_size, stride=stride,
+            padding=padding, groups=groups, bias=bias)
+        if relu is True:
+            self.relu = True
+            nn.init.kaiming_normal_(self.out.weight, nonlinearity='relu')
+        else:
+            self.relu = False
+            nn.init.xavier_uniform_(self.out.weight)
+
+    def forward(self, x):
+        if self.relu is True:
+            return F.relu(self.out(x))
+        else:
+            return self.out(x)
+
 
 class Embedding(nn.Module):
     """Embedding layer used by BiDAF, without the character-level component.
@@ -105,7 +127,101 @@ class EmbeddingWithCharLevel(nn.Module):
         emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
 
         return emb
+    
         
+        
+class EmbeddingWithCharLevel2_franky(nn.Module):
+    def __init__(self, word_vectors, hidden_size, drop_prob, \
+                 char_dict_size, char_emb_size, \
+                 conv_kernel_size, conv_depth1, \
+                 conv_output_hidden_size):
+        super(EmbeddingWithCharLevel2_franky, self).__init__()
+        
+        self.drop_prob = drop_prob
+        self.conv_output_hidden_size = conv_output_hidden_size
+        
+        self.word_embed = nn.Embedding.from_pretrained(word_vectors)
+        self.char_embed = nn.Embedding(char_dict_size, char_emb_size).cuda()
+        
+        self.wemb_dim = word_vectors.size(1)
+        
+        self.conv2d = nn.Conv2d(char_emb_size, hidden_size, kernel_size = (1,5), padding=0, bias=True)
+        nn.init.kaiming_normal_(self.conv2d.weight, nonlinearity='relu')
+        self.conv1d = Initialized_Conv1d(self.wemb_dim + hidden_size, hidden_size, bias=False)
+        self.high = HighwayEncoder(2, hidden_size)
+        self.dropout_w = drop_prob
+        self.dropout_c = drop_prob
+
+    def forward(self, x_words, x_chars):
+        
+        
+        emb_words = self.word_embed(x_words)   # (batch_size, seq_len, word_embed_size)
+        
+#         print('x_char shape = ', x_chars.shape)
+        emb_char = self.char_embed(x_chars)    
+        
+        ch_emb = emb_char.permute(0, 3, 1, 2)
+        ch_emb = F.dropout(ch_emb, p=self.dropout_c, training=self.training)
+        ch_emb = self.conv2d(ch_emb)
+        ch_emb = F.relu(ch_emb)
+        ch_emb, _ = torch.max(ch_emb, dim=3)
+
+        wd_emb = F.dropout(emb_words, p=self.dropout_w, training=self.training)
+        wd_emb = wd_emb.transpose(1, 2)
+        emb = torch.cat([ch_emb, wd_emb], dim=1)
+        emb = self.conv1d(emb)
+        
+        #print('embshape=', emb.shape)
+        emb = emb.transpose(1, 2)
+        emb = self.high(emb)
+        return emb  
+
+   
+class EmbeddingWithCharLevel2(nn.Module):
+    def __init__(self, word_vectors, hidden_size, drop_prob, \
+                 char_dict_size, char_emb_size, \
+                 conv_kernel_size, conv_depth1, \
+                 conv_output_hidden_size):
+        super(EmbeddingWithCharLevel2, self).__init__()
+        
+        self.drop_prob = drop_prob
+        self.conv_output_hidden_size = conv_output_hidden_size
+        
+        self.word_embed = nn.Embedding.from_pretrained(word_vectors)
+        self.char_embed = nn.Embedding(char_dict_size, char_emb_size).cuda()
+        
+        self.wemb_dim = word_vectors.size(1)
+        
+        self.conv2d = nn.Conv2d(char_emb_size, hidden_size, kernel_size = (1,5), padding=0, bias=True)
+        nn.init.kaiming_normal_(self.conv2d.weight, nonlinearity='relu')
+        self.conv1d = Initialized_Conv1d(self.wemb_dim + hidden_size, 2*hidden_size, bias=False)
+        self.high = HighwayEncoder(2, 2*hidden_size)
+        self.dropout_w = drop_prob
+        self.dropout_c = drop_prob
+
+    def forward(self, x_words, x_chars):
+        
+        
+        emb_words = self.word_embed(x_words)   # (batch_size, seq_len, word_embed_size)
+        
+#         print('x_char shape = ', x_chars.shape)
+        emb_char = self.char_embed(x_chars)    
+        
+        ch_emb = emb_char.permute(0, 3, 1, 2)
+        ch_emb = F.dropout(ch_emb, p=self.dropout_c, training=self.training)
+        ch_emb = self.conv2d(ch_emb)
+        ch_emb = F.relu(ch_emb)
+        ch_emb, _ = torch.max(ch_emb, dim=3)
+
+        wd_emb = F.dropout(emb_words, p=self.dropout_w, training=self.training)
+        wd_emb = wd_emb.transpose(1, 2)
+        emb = torch.cat([ch_emb, wd_emb], dim=1)
+        emb = self.conv1d(emb)
+        
+        #print('embshape=', emb.shape)
+        emb = emb.transpose(1, 2)
+        emb = self.high(emb)
+        return emb   
     
 class HighwayEncoder(nn.Module):
     """Encode an input sequence using a highway network.
@@ -135,6 +251,33 @@ class HighwayEncoder(nn.Module):
 
         return x
 
+class HighwayEncoder_franky(nn.Module):
+    """Encode an input sequence using a highway network.
+
+    Based on the paper:
+    "Highway Networks"
+    by Rupesh Kumar Srivastava, Klaus Greff, Jürgen Schmidhuber
+    (https://arxiv.org/abs/1505.00387).
+
+    Args:
+        num_layers (int): Number of layers in the highway encoder.
+        hidden_size (int): Size of hidden activations.
+    """
+    def __init__(self, num_layers, input_size, hidden_size):
+        super(HighwayEncoder_franky, self).__init__()
+        self.transforms = nn.ModuleList([nn.Linear(hidden_size, hidden_size) if i > 0 else nn.Linear(input_size, hidden_size)
+                                         for i in range(num_layers)])
+        self.gates = nn.ModuleList([nn.Linear(hidden_size, hidden_size) if i > 0 else nn.Linear(input_size, hidden_size)
+                                    for i in range(num_layers)])
+
+    def forward(self, x):
+        for gate, transform in zip(self.gates, self.transforms):
+            # Shapes of g, t, and x are all (batch_size, seq_len, hidden_size)
+            g = torch.sigmoid(gate(x))
+            t = F.relu(transform(x))
+            x = g * t + (1 - g) * x
+
+        return x
 
 class RNNEncoder(nn.Module):
     """General-purpose layer for encoding a sequence using a bidirectional RNN.
