@@ -58,13 +58,14 @@ class SelfAttention(nn.Module):
         self.bias = nn.Parameter(bias)
 
     def forward(self, queries, mask):
-        memory = queries
+        memory = queries  # (batch_size, d_model, c_len)
 
-        memory = self.mem_conv(memory)
-        query = self.query_conv(queries)
-        memory = memory.transpose(1, 2)
-        query = query.transpose(1, 2)
-        Q = self.split_last_dim(query, self.num_head)
+        memory = self.mem_conv(memory) # (batch_size, 2*d_model, ?)
+        query = self.query_conv(queries) # (batch_size, d_model, ?)
+        memory = memory.transpose(1, 2) # (batch_size, ?, 2*d_model)
+        query = query.transpose(1, 2) # (batch_size, ?, d_model)
+        # print(query.shape)
+        Q = self.split_last_dim(query, self.num_head)  # (batch_size, ?, self.num_head, d_model//self.num_head)
         K, V = [self.split_last_dim(tensor, self.num_head) for tensor in torch.split(memory, self.d_model, dim=2)]
 
         key_depth_per_head = self.d_model // self.num_head

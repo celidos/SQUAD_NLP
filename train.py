@@ -18,6 +18,7 @@ from args import get_train_args
 from collections import OrderedDict
 from json import dumps
 from models import BiDAF
+from models_franky import BiDAF_franky
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 from ujson import load as json_load
@@ -46,9 +47,14 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = BiDAF(word_vectors=word_vectors,
-                  hidden_size=args.hidden_size,
-                  drop_prob=args.drop_prob)
+    model = BiDAF_franky(word_vectors=word_vectors,
+                      hidden_size=args.hidden_size,
+                      drop_prob=args.drop_prob,
+                      char_dict_size=1400,#train_dataset.get_char_dict_size(),
+                      char_emb_size=64,
+                      conv_kernel_size=3,
+                      conv_depth1=50,
+                      conv_output_hidden_size=args.hidden_size)
     model = nn.DataParallel(model, args.gpu_ids)
     if args.load_path:
         log.info('Loading checkpoint from {}...'.format(args.load_path))
@@ -69,17 +75,20 @@ def main(args):
     # Get optimizer and scheduler
     optimizer = optim.Adadelta(model.parameters(), args.lr,
                                weight_decay=args.l2_wd)
-    scheduler = sched.LambdaLR(optimizer, lambda s: 1.)  # Constant LR
+    lambda3 = lambda step: (0.01 + 0.0011 * (step + 1)) if step < 2000 else 2.0 if step < 4000 else 0.9999 ** ((step - 4000) // 2)
+    scheduler = sched.LambdaLR(optimizer, lambda3)  # LR
 
     # Get data loader
     log.info('Building dataset...')
     train_dataset = SQuAD(args.train_record_file, args.use_squad_v2)
+    dev_dataset = SQuAD(args.dev_record_file, args.use_squad_v2)
+
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
                                    shuffle=True,
                                    num_workers=args.num_workers,
                                    collate_fn=collate_fn)
-    dev_dataset = SQuAD(args.dev_record_file, args.use_squad_v2)
+
     dev_loader = data.DataLoader(dev_dataset,
                                  batch_size=args.batch_size,
                                  shuffle=False,
@@ -98,12 +107,14 @@ def main(args):
             for cw_idxs, cc_idxs, qw_idxs, qc_idxs, y1, y2, ids in train_loader:
                 # Setup for forward
                 cw_idxs = cw_idxs.to(device)
+                cc_idxs = cc_idxs.to(device)
                 qw_idxs = qw_idxs.to(device)
+                qc_idxs = qc_idxs.to(device)
                 batch_size = cw_idxs.size(0)
                 optimizer.zero_grad()
 
                 # Forward
-                log_p1, log_p2 = model(cw_idxs, qw_idxs)
+                log_p1, log_p2 = model(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
                 y1, y2 = y1.to(device), y2.to(device)
                 loss = F.nll_loss(log_p1, y1) + F.nll_loss(log_p2, y2)
                 loss_val = loss.item()
@@ -112,7 +123,7 @@ def main(args):
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                 optimizer.step()
-                scheduler.step(step // batch_size)
+                scheduler.step()
                 ema(model, step // batch_size)
 
                 # Log info
@@ -154,6 +165,7 @@ def main(args):
                                    step=step,
                                    split='dev',
                                    num_visuals=args.num_visuals)
+
 
 
 def evaluate(model, data_loader, device, eval_file, max_len, use_squad_v2):

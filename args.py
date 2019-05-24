@@ -70,7 +70,7 @@ def get_setup_args():
                         help='Number of GloVe vectors')
     parser.add_argument('--ans_limit',
                         type=int,
-                        default=30,
+                        default=15,
                         help='Max number of words in a training example answer')
     parser.add_argument('--char_limit',
                         type=int,
@@ -96,7 +96,7 @@ def get_train_args():
     
     parser.add_argument('--eval_steps',
                         type=int,
-                        default=50000,
+                        default=25000,
                         help='Number of steps between successive evaluations.')
 
     parser.add_argument('--lr',
@@ -226,7 +226,7 @@ def add_train_test_args(parser):
                         help='Base directory for saving information.')
     parser.add_argument('--batch_size',
                         type=int,
-                        default=64,
+                        default=40,
                         help='Batch size per GPU. Scales automatically when \
                               multiple GPUs are available.')
     parser.add_argument('--use_squad_v2',

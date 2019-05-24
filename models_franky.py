@@ -11,7 +11,7 @@ class BiDAF_franky(nn.Module):
     def __init__(self, word_vectors, hidden_size,
                 char_dict_size, char_emb_size, \
                  conv_kernel_size, conv_depth1, \
-                 conv_output_hidden_size, drop_prob=0.):
+                 conv_output_hidden_size, drop_prob=0.2):
         super(BiDAF_franky, self).__init__()
         
         
@@ -41,6 +41,9 @@ class BiDAF_franky(nn.Module):
 
         self.att = layers.BiDAFAttention(hidden_size=2 * hidden_size,
                                          drop_prob=drop_prob)
+
+
+        self.self_att = layers_franky.SelfAttention(d_model=8*hidden_size, num_head=4, dropout=drop_prob)
                                          
 
         self.mod = layers.RNNEncoder(input_size=8 * hidden_size,
@@ -80,7 +83,9 @@ class BiDAF_franky(nn.Module):
 
         #print(att.shape)
 
-        mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
+        self_att = self.self_att(att.transpose(1, 2), c_mask).transpose(1, 2)
+
+        mod = self.mod(self_att, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
         out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
 
